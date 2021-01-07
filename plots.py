@@ -1,13 +1,19 @@
 #!/usr/bin/env python
 
-# Imports
+#%% Imports
+
 import numpy as np
 import math
 import matplotlib.pyplot as plt
+from data import swing_equation
 
-def plot_sol(sol):
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
+#%% Functions
+
+def plot_sol(sol, params):
+    n_data = params['n_data']
+    t_min, t_max = params['t_min'], params['t_max']
     t = np.linspace(t_min, t_max, n_data)
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
     ax1.plot(t, sol[0])
     ax1.set_title("Rotor angle vs. Time")
     ax1.set(xlabel="Time [s]", ylabel="δ [rad]")
@@ -22,7 +28,9 @@ def plot_trajectory(sol):
     plt.xlabel("δ [rad]")
     plt.ylabel("ω [rad/s]")
 
-def plot_phase(sol, power):
+def plot_phase(sol, power, params):
+    n_data = params['n_data']
+    m, d, B = params['inertia'], params['damping'], params['susceptance']
     lim = math.ceil(sol.max())
     delta = np.linspace(-lim, lim, n_data//5)
     omega = np.linspace(-lim, lim, n_data//5)
@@ -51,3 +59,4 @@ def plot_phase(sol, power):
     ax.set_title("Phase plot")
     ax.set(xlabel="δ [rad]", ylabel="ω [rad/s]")
     fig.show()
+    

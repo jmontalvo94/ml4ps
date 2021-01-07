@@ -1,0 +1,28 @@
+{
+    "GENERAL": {
+        "seed": 123
+    },
+   "DATA_PARAMS": {
+        "n_data": 101,
+        "n_collocation": 8000,
+        "inertia": 0.15,
+        "damping": 0.15,
+        "susceptance": 0.2,
+        "delta_0": 0,
+        "omega_0": 0,
+        "p_min": 0.08,
+        "p_max": 0.18,
+        "t_min": 0,
+        "t_max": 10
+    },
+    "NN_PARAMS": {
+        "learning_rate": 0.001,
+        "weight_decay": 0,
+        "batch_size": 64,
+        "n_epochs": 10,
+        "optimizer": "Adam",
+        "loss_function": "MSE",
+        "activation": "Tanh",
+        "layers": [2,30,30,1]
+    }
+}

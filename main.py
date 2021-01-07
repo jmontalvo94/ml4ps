@@ -1,33 +1,41 @@
 #!/usr/bin/env python
 
+# %% Imports
 import numpy as np
-from data.data import create_dataset
+import torch
+from datetime import datetime
+# Local
+from cli import cli
+from data import create_dataset, init_dataset
+from networks import NN, PINN
+from plots import plot_sol
+from train import train_NN, train_PINN
+from utils import set_seed_everywhere
 
-n_data = 101 # number of data points per trajectory
-# n_collocation = 80 # number of collocation points
+# %% Initialization
 
-m = 0.15 # angular inertia
-d = 0.15 # damping coefficient
-B = 0.2 # susceptance [pu]
-delta_0 = np.array([0]) # initial angle [rad]
-omega_0 = np.array([0]) # initial angular speed [rad/s]
+args, general, params, nn_params = cli()
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+NAME = args.name + '_' + timestamp if args.name is not None else timestamp
+PATH_MODELS = args.path_models
+PATH_DATA = args.path_data
+SEED = general['seed']
 
-p_min = 0.08 # [pu]
-p_max = 0.18 # [pu]
-p_span = (p_min, p_max)
+set_seed_everywhere(SEED)
 
-t_min = 0 # [s]
-t_max = 10 # [s]
-t_span = (t_min, t_max)
+# %% Data
 
-params = {'n_data': n_data,
-          'inertia': m,
-          'damping': d,
-          'susceptance': B,
-          'delta_0': delta_0,
-          'omega_0': omega_0,
-          'p_span': p_span,
-          't_span': t_span
-         }
+params['t_span'] = (params['t_min'], params['t_max'])
+params['p_span'] = (params['p_min'], params['p_max'])
+data = create_dataset(params)
+train, trainc, test = init_dataset(data, params)
 
-X, Y_delta, Y_omega = create_dataset(params)
+# %% Train
+
+model_nn = NN(nn_params)
+
+results_NN = train_NN(model_NN, train, test, nn_params, data_params)
+
+model_pinn = PINN(nn_params, data_params)
+
+results_PINN = train_PINN(model_PINN, trainc, test, nn_params, data_params)
