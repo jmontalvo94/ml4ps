@@ -178,5 +178,3 @@ if __name__ == '__main__':
     model_pinn = PINN(nn_params, params)
 
     results_pinn = train_PINN(model_pinn, trainc, test, nn_params, params)
-
-# %%

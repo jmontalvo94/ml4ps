@@ -54,46 +54,6 @@ def gradients(outputs, inputs):
 
 # %% Classes
 
-class PyroNN(nn.Module):
-    """ Vanilla Feed-Forward Neural Network (NN) """
-    
-    def __init__(self, nn_params):
-        super().__init__()
-        
-        # Unpack parameters
-        layers = nn_params['layers']
-        activation = nn_params['activation']
-        lr = nn_params['learning_rate']
-        opt = nn_params['optimizer']
-        
-        loss_fun = nn_params['loss_function']
-        
-        # Set activation function
-        if activation == 'ReLU':
-            self.activation = nn.ReLU()
-        elif activation == 'Tanh':
-            self.activation = nn.Tanh()
-            
-        # Create architecture
-        depth = len(layers) - 1
-        self.nn = nn.Sequential()
-        for n in range(depth - 1):
-            self.nn.add_module(f"layer_{n}", nn.Linear(layers[n], layers[n + 1]))
-            self.nn.add_module(f"act_{n}", self.activation)
-        self.nn.add_module(f"layer_{n + 1}", nn.Linear(layers[n + 1], layers[n + 2]))
-                   
-        # Loss function
-        if loss_fun == 'MSE':
-            self.loss_fun = nn.MSELoss()
-        elif loss_fun == 'MAE':
-            self.loss_fun = nn.L1Loss()
-
-    def forward(self, x):
-        return self.nn(x)
-    
-    def loss_(self, y_hat, y):
-        return self.loss_fun(y_hat, y)
-
 class NN(nn.Module):
     """ Vanilla Feed-Forward Neural Network (NN) """
     
@@ -105,7 +65,6 @@ class NN(nn.Module):
         activation = nn_params['activation']
         lr = nn_params['learning_rate']
         opt = nn_params['optimizer']
-        
         loss_fun = nn_params['loss_function']
         
         # Set activation function
@@ -246,5 +205,3 @@ if __name__ == '__main__':
     #         loss.backward()
     #         net.optimizer.step()
     # print(prof.key_averages().table(sort_by="self_cpu_time_total"))
-
-# %%

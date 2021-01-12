@@ -21,6 +21,14 @@ PATH_MODELS = args.path_models
 PATH_DATA = args.path_data
 SEED = general['seed']
 
+# Operations on the GPU if available
+if torch.cuda.is_available():
+    DEVICE = 'cuda'
+else:
+    DEVICE = 'cpu'
+    
+device = torch.device(DEVICE)
+
 set_seed_everywhere(SEED)
 
 # %% Data

@@ -134,7 +134,7 @@ def create_dataset(params):
 
     return X_u, X_f, y_delta, y_omega
 
-def init_dataset(data, data_params, split=0.8, transformation='standardize'):
+def init_dataset(data, data_params, split=0.8, sample=True, transformation='standardize'):
     """Inits the Dataset, depends on collocation flag.
     
     Args:
@@ -173,10 +173,11 @@ def init_dataset(data, data_params, split=0.8, transformation='standardize'):
     y_omega_test = y_omega_test.reshape((-1,1))
     
     # Sample
-    idx_train = np.random.choice(X_train.shape[0], n_u, replace=False)
-    X_train = X_train[idx_train]
-    y_delta_train = y_delta_train[idx_train]
-    y_omega_train = y_omega_train[idx_train]
+    if sample:
+        idx_train = np.random.choice(X_train.shape[0], n_u, replace=False)
+        X_train = X_train[idx_train]
+        y_delta_train = y_delta_train[idx_train]
+        y_omega_train = y_omega_train[idx_train]
     
     # Concatenate with collocation points
     X_trainc = np.vstack((X_train, X_f))
@@ -202,10 +203,11 @@ def init_dataset(data, data_params, split=0.8, transformation='standardize'):
         trf_params = (max_train, max_trainc)
         
     # Shuffle
-    idx_shuffle = np.random.permutation(X_trainc.shape[0])
-    X_trainc = X_trainc[idx_shuffle]
-    y_delta_trainc = y_delta_trainc[idx_shuffle]
-    y_omega_trainc = y_omega_trainc[idx_shuffle]
+    if sample:
+        idx_shuffle = np.random.permutation(X_trainc.shape[0])
+        X_trainc = X_trainc[idx_shuffle]
+        y_delta_trainc = y_delta_trainc[idx_shuffle]
+        y_omega_trainc = y_omega_trainc[idx_shuffle]
     
 
     return ((X_train, y_delta_train, y_omega_train, trf_params), 
