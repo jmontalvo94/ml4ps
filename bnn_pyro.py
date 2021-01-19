@@ -48,7 +48,7 @@ class Model_BNN(PyroModule):
         self.net = BNN(nn_params)
         # self.net_prec = PyroSample(dist.Gamma(100.0, 1.0))
         # self.net_scale = 1.0 / torch.sqrt(self.net_prec)
-        self.net_scale = 0.001
+        self.net_scale = 0.00001
 
     def forward(self, X, u=None):
         mu = self.net(X)
@@ -76,7 +76,7 @@ if __name__ == '__main__':
     data = create_dataset(params)
     X_u, X_f, y_delta, y_omega = data
     train, trainc, test = init_dataset(data, params)
-    train_idx, trainc_idx, test_idx = init_dataset(data, params, sample=False)
+    train_idx, trainc_idx, test_idx = init_dataset(data, params, sample=False, transformation=None)
     X_train, y_delta_train, y_omega_train, trf_params_train = train
     X_test, y_delta_test, y_omega_test, trf_params_test = test
     X_train_idx, y_delta_train_idx, y_omega_train_idx, trf_params_train_idx = train_idx
@@ -97,7 +97,7 @@ y_test = torch.tensor(y_delta_test, dtype=torch.float32)
 # Run inference in Pyro
 model = Model_BNN(nn_params)
 nuts_kernel = NUTS(model)
-mcmc = MCMC(nuts_kernel, num_samples=100, warmup_steps=100, num_chains=1)
+mcmc = MCMC(nuts_kernel, num_samples=1000, warmup_steps=100, num_chains=1)
 mcmc.run(X_selected, y_selected)
 
 # Show summary of inference results

@@ -52,6 +52,10 @@ def gradients(outputs, inputs):
     """ Returns gradients of outputs w.r.t. inputs, retains graph for higher order derivatives """
     return torch.autograd.grad(outputs.sum(), inputs, retain_graph=True, create_graph=True)[0]
 
+def grad2(outputs, inputs):
+    """ Returns gradients of outputs w.r.t. inputs, retains graph for higher order derivatives """
+    return torch.autograd.grad(outputs.sum(), inputs)[0]
+
 # %% Classes
 
 class NN(nn.Module):
@@ -110,10 +114,8 @@ class PINN(NN):
         u_hat = self.forward_nn(torch.cat([p, t], dim=1))
         # First derivative
         dudt = gradients(u_hat, t)
-        print(dudt)
         # Second derivative
         dudtt = gradients(dudt, t)
-        print(dudtt)
         # Physics term
         f = self.m * dudtt + self.d * dudt + self.B * torch.sin(u_hat) - p
         

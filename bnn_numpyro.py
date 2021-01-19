@@ -43,7 +43,7 @@ def model_bnn(X, Y, D_H, sigma_obs=None, sigma_w=1):
     
     # prior on the observation noise
     if sigma_obs is None:
-        prec_obs = numpyro.sample("prec_obs", dist.Gamma(100.0, 1.0))
+        prec_obs = numpyro.sample("prec_obs", dist.Gamma(1000000.0, 1.0))
         sigma_obs = 1.0 / jnp.sqrt(prec_obs)
 
     # observe data
@@ -73,7 +73,7 @@ def predict(model, rng_key, samples, X, D_H, sigma_obs=None):
 
 if __name__ == '__main__':
     
-    DATA_DIR = 'data/'
+    PATH_MODELS = 'models/'
     
     from cli import cli
     from data import create_dataset, init_dataset
@@ -87,8 +87,8 @@ if __name__ == '__main__':
     
     data = create_dataset(params)
     X_u, X_f, y_delta, y_omega = data
-    train, trainc, test = init_dataset(data, params)
-    train_idx, trainc_idx, test_idx = init_dataset(data, params, sample=False)
+    train, trainc, test = init_dataset(data, params, transformation=None)
+    train_idx, trainc_idx, test_idx = init_dataset(data, params, sample=False, transformation=None)
     X_train, y_delta_train, y_omega_train, trf_params_train = train
     X_test, y_delta_test, y_omega_test, trf_params_test = test
     X_train_idx, y_delta_train_idx, y_omega_train_idx, trf_params_train_idx = train_idx
@@ -97,8 +97,11 @@ if __name__ == '__main__':
 #%% Data for BNN
 
 idx = 0
-X_selected = jnp.array(X_train_idx[idx*n_data:idx*n_data+n_data,:2])
-y_selected = jnp.array(y_delta_train_idx[idx*n_data:idx*n_data+n_data,:])
+noise=0.1
+X_selected = jnp.array(X_u[idx][:,:2])
+y_selected = jnp.array(y_delta[idx].reshape(-1,1)) # * (1 + noise*np.random.randn(len(y_delta), 1)))
+# X_selected = jnp.array(X_train_idx[idx*n_data:idx*n_data+n_data,:2])
+# y_selected = jnp.array(y_delta_train_idx[idx*n_data:idx*n_data+n_data,:])
 X = jnp.array(X_train[:,:2])
 y = jnp.array(y_delta_train)
 X_test = jnp.array(X_test)
@@ -113,27 +116,40 @@ args = {'num_samples': 2000,
 
 # Inference
 rng_key, rng_key_predict = random.split(random.PRNGKey(SEED))
-samples = run_inference(model_bnn, args, rng_key, X_selected, y_selected, D_H)
+samples = run_inference(model_bnn, args, rng_key, X_selected, y_selected, D_H, sigma_obs=0.1)
+
+#%%
+import pickle
+NAME = 'BNN_2000_500_20_1'
+with open(PATH_MODELS + NAME + '.pickle', 'wb') as handle:
+    pickle.dump(samples, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+#%% Load
+
+import pickle
+NAME = 'BNN_2000_500_20_01'
+with open(PATH_MODELS + NAME + '.pickle', 'rb') as handle:
+    samples = pickle.load(handle)
 
 #%% Inference visualization
 
-plt.plot(samples['prec_obs'])
-plt.show()
-
-sns.distplot(samples['prec_obs'])
-plt.show()
-
 sns.distplot(samples['w1'][:,0,0])
+plt.savefig('images/bnn_20_01_posterior1.png')
+plt.tight_layout()
 plt.show()
 
 sns.displot(x=samples['w1'][:,0,0], y=samples['w1'][:,0,1], kind='kde')
 plt.plot(samples['w1'][:,0,0], samples['w1'][:,0,1], alpha=0.5)
+plt.ylabel('w1_1')
+plt.xlabel('w1_2')
+plt.tight_layout()
+plt.savefig('images/bnn_20_01_posterior2.png')
 plt.show()
 
 # %% Predictions
 
 vmap_args = (samples, random.split(rng_key_predict, args['num_samples'] * args['num_chains']))
-predictions = vmap(lambda samples, rng_key: predict(model_bnn, rng_key, samples, X_selected, D_H))(*vmap_args)
+predictions = vmap(lambda samples, rng_key: predict(model_bnn, rng_key, samples, X_selected, D_H, sigma_obs=0.001))(*vmap_args)
 
 preds = predictions[..., 0]
 pred_mean = jnp.mean(preds, axis=0)
@@ -142,13 +158,15 @@ percentiles = np.percentile(preds, [5.0, 95.0], axis=0)
 
 #%% Prediction visualization
 
-plt.plot(pred_mean, label='Prediction')
-plt.plot(y_selected, label='Real')
-plt.fill_between(np.arange(len(pred_mean)), pred_mean + pred_std, pred_mean - pred_std, alpha=0.5)
+plt.plot(np.linspace(params['t_min'], params['t_max'], params['n_data']), y_selected, label='Real')
+plt.plot(np.linspace(params['t_min'], params['t_max'], params['n_data']), pred_mean, 'r--', label='Prediction')
+plt.fill_between(np.linspace(params['t_min'], params['t_max'], params['n_data']), pred_mean + pred_std, pred_mean - pred_std, color='red', alpha=0.3)
 #plt.fill_between(np.arange(len(pred_mean)), percentiles[0], percentiles[1], alpha=0.5)
 plt.xlabel("Time [s]")
 plt.ylabel("δ [rad]")
 plt.legend()
+plt.tight_layout()
+plt.savefig('images/bnn_20_01.png')
 plt.show()
 
 # %%

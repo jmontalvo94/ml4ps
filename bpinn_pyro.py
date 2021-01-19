@@ -4,17 +4,17 @@
 
 import matplotlib.pyplot as plt
 import numpy as np
-import torch
-import torch.nn as nn
 import pyro
 import pyro.distributions as dist
 import seaborn as sns
-from pyro.nn import PyroModule, PyroSample
-from pyro.infer import SVI, Trace_ELBO, MCMC, NUTS, HMC
-from pyro.contrib.autoguide import AutoDiagonalNormal, AutoMultivariateNormal
+import torch
+import torch.nn as nn
+from pyro.contrib.autoguide import (AutoDiagonalNormal, AutoMultivariateNormal,
+                                    AutoNormal)
+from pyro.infer import HMC, MCMC, NUTS, SVI, Predictive, Trace_ELBO
+from pyro.nn import PyroModule, PyroSample, PyroParam
 from pyro.optim import Adam, ClippedAdam
-from pyro.infer import Predictive
-
+from torch.distributions import constraints
 
 #%% Classes
 
@@ -42,6 +42,7 @@ class BNN(PyroModule):
         x = self.fc3(x)
         return x
     
+
 class Model_BPINN(PyroModule):
     def __init__(self, nn_params, data_params):
         super().__init__()
@@ -56,42 +57,28 @@ class Model_BPINN(PyroModule):
         self.d = data_params['damping']
         self.B = data_params['susceptance']
 
-    def forward(self, X, u=None, f=None):
+    def forward(self, X, u=None, f=None, mask=None):
         
         p = X.select(1,0).view(-1,1)
         t = X.select(1,1).view(-1,1)
         t.requires_grad_(True)
         
-        mu = self.net(torch.cat([p, t], dim=1))
-        dudt = self.grad1(mu, t)
-        dudtt = self.grad1(dudt, t)
-        # print(mu, dudt, dudtt)
-        # mu = mu.detach()
-        # dudt = dudt.detach()
-        # print(mu, dudt, dudtt)
+        u_mu = self.net(torch.cat([p, t], dim=1))
+        dudt = self.gradient(u_mu, t)
+        dudtt = self.gradient(dudt, t)
         
         sigma = self.net_scale
         f_sigma = self.f_scale
         
         with pyro.plate("observations", X.shape[0]):
-            u_hat = pyro.sample("obs1", dist.Normal(mu, sigma).to_event(1), obs=u)
-            # print(u_hat)
-            # dudt = self.grad1(u_hat, t)
-            # dudtt = self.grad2(dudt, t)
-            # print(u_hat, dudt, dudtt)
-            # u_hat = u_hat.detach()
-            # dudt = dudt.detach()
-            # print(u_hat, dudt, dudtt)
-            f_mu = self.m * dudtt + self.d * dudt + self.B * torch.sin(u_hat) - p
-            # print(f_mu)
+            with pyro.poutine.mask(mask=mask):
+                u_hat = pyro.sample("obs1", dist.Normal(u_mu, sigma).to_event(1), obs=u)
+            f_mu = self.m * dudtt + self.d * dudt + self.B * torch.sin(u_mu) - p
             f_hat = pyro.sample("obs2", dist.Normal(f_mu, f_sigma).to_event(1), obs=f)
         return u_hat, f_hat
     
-    def grad1(self, outputs, inputs):
+    def gradient(self, outputs, inputs):
         return torch.autograd.grad(outputs.sum(), inputs, retain_graph=True, create_graph=True)[0]
-    
-    def grad2(self, outputs, inputs):
-        return torch.autograd.grad(outputs.sum(), inputs)[0]
     
 
 #%% Testing
@@ -110,8 +97,8 @@ if __name__ == '__main__':
     n_coll = params['n_collocation']
     
     data = create_dataset(params)
-    train, trainc, test = init_dataset(data, params)
-    train_idx, trainc_idx, test_idx = init_dataset(data, params, sample=False)
+    train, trainc, test = init_dataset(data, params, transformation=None)
+    train_idx, trainc_idx, test_idx = init_dataset(data, params, sample=False, transformation=None)
     X_u, X_f, y_delta, y_omega = data
     X_trainc, y_delta_trainc, y_omega_trainc, trf_params_trainc = trainc
     X_test, y_delta_test, y_omega_test, trf_params_test = test
@@ -130,16 +117,19 @@ if __name__ == '__main__':
     F_coll = torch.zeros_like(y_train_coll)
     
     idx = 0
-    X_selected = torch.tensor(X_train_idx[idx*n_data:idx*n_data+n_data,:2], dtype=torch.float32)
-    y_selected = torch.tensor(y_delta_train_idx[idx*n_data:idx*n_data+n_data,:], dtype=torch.float32)
+    data_type = torch.tensor(X_u[idx][:,2], dtype=torch.float32)
+    X_selected = torch.tensor(X_u[idx][:,:2], dtype=torch.float32)
+    y_selected = torch.tensor(y_delta[idx].reshape(-1,1), dtype=torch.float32)
 
 #%% Data for BNN
 
-# X_train = torch.tensor(X_trainc[:,:2], dtype=torch.float32)
-# y_train = torch.tensor(y_delta_trainc, dtype=torch.float32)
-# X_test = torch.tensor(X_test, dtype=torch.float32)
-# y_test = torch.tensor(y_delta_test, dtype=torch.float32)
-# F = torch.zeros(y_train.shape[0], 1)
+
+X_train = torch.tensor(X_trainc[:,:2], dtype=torch.float32)
+y_train = torch.tensor(y_delta_trainc, dtype=torch.float32)
+X_test = torch.tensor(X_test, dtype=torch.float32)
+y_test = torch.tensor(y_delta_test, dtype=torch.float32)
+mask = torch.tensor(mask_data.reshape(-1,1), dtype=torch.bool)
+F = torch.zeros(y_train.shape[0], 1)
 
 
 # %% SVI
@@ -147,13 +137,13 @@ if __name__ == '__main__':
 model = Model_BPINN(nn_params, params)
 
 # Define guide function
-guide = AutoDiagonalNormal(model)
+guide = AutoNormal(model)
 
 # Reset parameter values
 pyro.clear_param_store()
 
 # Define the number of optimization steps
-n_steps = 10000
+n_steps = 100000
 
 # Setup the optimizer
 adam_params = {"lr": 0.001}
@@ -165,7 +155,7 @@ svi = SVI(model, guide, optimizer, loss=elbo)
 
 # Do gradient steps
 for step in range(n_steps):
-    elbo = svi.step(X_selected, y_selected, F_data)
+    elbo = svi.step(X_train, y_train, F, mask)
     # if step % 2 == 0:
     #     elbo = svi.step(X_selected, y_selected, F_data)
     # else:
@@ -184,7 +174,7 @@ pred_std = samples_svi["obs1"].detach().std(axis=0).squeeze(-1)
 
 # %% Visualize
 
-sns.distplot([dist.Normal(pyro.get_param_store()['AutoDiagonalNormal.loc'][0].item(), pyro.get_param_store()['AutoDiagonalNormal.scale'][0].item()).sample() for _ in range(1000)])
+sns.distplot([dist.Normal(pyro.get_param_store()['AutoNormal.locs.net.fc1.weight'][0,0].item(), pyro.get_param_store()['AutoNormal.scales.net.fc1.weight'][0,0].item()).sample() for _ in range(1000)])
 plt.show()
 
 plt.plot(pred_mean, label='Prediction')
@@ -195,47 +185,4 @@ plt.ylabel("δ [rad]")
 plt.legend()
 plt.show()
 
-# %% MCMC
-
-# Run inference in Pyro
-model = Model_BNN(nn_params)
-nuts_kernel = NUTS(model)
-mcmc = MCMC(nuts_kernel, num_samples=100, warmup_steps=100, num_chains=1)
-mcmc.run(X_selected, y_selected)
-
-# Show summary of inference results
-mcmc.summary()
-    
-# %% Prediction
-
-# Samples
-posterior_samples = mcmc.get_samples()
-
-# Prediction
-predictive_mcmc = Predictive(model, posterior_samples=mcmc.get_samples(), num_samples=1000, return_sites=["obs"])
-samples_mcmc = predictive(X_selected)
-pred_mean = samples_mcmc["obs"].detach().mean(axis=0).squeeze(-1)
-pred_std = samples_mcmc["obs"].detach().std(axis=0).squeeze(-1)
-
-#%% Save
-
-import pickle
-
-with open(DATA_DIR + NAME + '.pickle', 'wb') as handle:
-    pickle.dump(samples_mcmc, handle, protocol=pickle.HIGHEST_PROTOCOL)
-
-#%% Visualize
-
-sns.distplot(posterior_samples['net.fc1.weight'][:,0,0])
-plt.show()
-
-sns.displot(x=posterior_samples['net.fc1.weight'][:,0,0], y=posterior_samples['net.fc1.weight'][:,0,1], kind='kde')
-plt.plot(posterior_samples['net.fc1.weight'][:,0,0], posterior_samples['net.fc1.weight'][:,0,1])
-plt.show()
-
-plt.plot(pred_mean)
-plt.plot(y_selected)
-plt.fill_between(torch.arange(len(pred_mean)), pred_mean + pred_std, pred_mean - pred_std)
-plt.xlabel("Time [s]")
-plt.ylabel("δ [rad]")
-plt.show()
+# %%

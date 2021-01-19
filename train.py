@@ -15,7 +15,12 @@ from utils import set_seed_everywhere
 
 # %% Functions
 
-def train_NN(model, train, test, nn_params, data_params):
+def train_NN(model, train, test, nn_params, data_params, args, noise=0):
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    NAME = args.name + 'NN_' + timestamp if args.name is not None else timestamp
+    PATH_MODELS = args.path_models
+    PATH_DATA = args.path_data
     
     # Unpack parameters
     n_data = data_params['n_data']
@@ -33,6 +38,7 @@ def train_NN(model, train, test, nn_params, data_params):
 
     # Unpack matrices and transform to tensor
     X_train, y_delta_train, y_omega_train, _ = train
+    y_delta_train = y_delta_train * (1 + noise * np.random.randn(y_delta_train.shape[0], 1))
     X = torch.tensor(X_train, dtype=torch.float32)
     y = torch.tensor(y_delta_train, dtype=torch.float32)
     
@@ -62,7 +68,7 @@ def train_NN(model, train, test, nn_params, data_params):
             y_hat = model.forward_nn(torch.cat([p_batch[i].view((-1,1)), t_batch[i].view((-1,1))], dim=1))
 
             # Compute the loss
-            loss = model.loss_nn(y_hat, y_batch[i])
+            loss = model.loss_nn(y_hat, y_batch[i].view((-1,1)))
 
             # Backward pass through the network
             loss.backward()
@@ -82,7 +88,12 @@ def train_NN(model, train, test, nn_params, data_params):
     
     return train_loss
     
-def train_PINN(model, train, test, nn_params, data_params, weight=False):
+def train_PINN(model, train, test, nn_params, data_params, args, weight=False):
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    NAME = args.name + '_' + timestamp if args.name is not None else timestamp
+    PATH_MODELS = args.path_models
+    PATH_DATA = args.path_data
     
     # Unpack parameters
     n_data = data_params['n_data']
@@ -138,7 +149,7 @@ def train_PINN(model, train, test, nn_params, data_params, weight=False):
             u_hat, f = model.forward_pinn(p_batch[i].view((-1,1)), t_batch[i].view((-1,1)))
             
             # Compute the loss
-            loss_u, loss_f, loss = model.loss_pinn(u_hat, y_batch[i], dp_batch[i], f, w2)
+            loss_u, loss_f, loss = model.loss_pinn(u_hat, y_batch[i].view((-1,1)), dp_batch[i].view((-1,1)), f, w2)
 
             # Backward pass through the network
             loss.backward(retain_graph=True)

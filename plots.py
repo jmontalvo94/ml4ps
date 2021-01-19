@@ -60,3 +60,15 @@ def plot_phase(sol, power, params):
     ax.set(xlabel="δ [rad]", ylabel="ω [rad/s]")
     fig.show()
     
+if __name__ == '__main__':
+    
+    from scipy.stats import norm
+    
+    fig, ax = plt.subplots(1, 1)
+    x = np.linspace(norm.ppf(0.001),
+                    norm.ppf(0.999), 100)
+    ax.plot(x, norm.pdf(x),
+        'k-', lw=15)
+    ax.axis('off')
+    ax.fill_between(x, norm.pdf(x), color='orange')
+    fig.savefig('normal_y.png', bbox_inches='tight', pad_inches = 0)

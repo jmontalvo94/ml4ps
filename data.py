@@ -134,7 +134,7 @@ def create_dataset(params):
 
     return X_u, X_f, y_delta, y_omega
 
-def init_dataset(data, data_params, split=0.8, sample=True, transformation='standardize'):
+def init_dataset(data, data_params, split=0.8, sample=True, transformation='standardize', noise=None):
     """Inits the Dataset, depends on collocation flag.
     
     Args:
@@ -152,7 +152,7 @@ def init_dataset(data, data_params, split=0.8, sample=True, transformation='stan
     
     # Prepare train/test split
     idx_split = int(np.floor(X_u.shape[0]*split))
-    idx_total = np.random.permutation(X_u.shape[0])
+    idx_total = np.random.permutation(X_u.shape[0]) # permute trajectories (dim0)
     idx_left = idx_total[:idx_split]
     idx_test = idx_total[idx_split:]
     
@@ -172,6 +172,10 @@ def init_dataset(data, data_params, split=0.8, sample=True, transformation='stan
     y_delta_test = y_delta_test.reshape((-1,1))
     y_omega_test = y_omega_test.reshape((-1,1))
     
+    # Copy to keep real trajectories
+    y_delta_train_real = y_delta_train.copy()
+    y_omega_train_real = y_omega_train.copy()
+    
     # Sample
     if sample:
         idx_train = np.random.choice(X_train.shape[0], n_u, replace=False)
@@ -184,6 +188,11 @@ def init_dataset(data, data_params, split=0.8, sample=True, transformation='stan
     y_delta_trainc = np.vstack((y_delta_train, np.zeros((n_f, 1))))
     y_omega_trainc = np.vstack((y_omega_train, np.zeros((n_f, 1))))
 
+    # Add noise to trajectories
+    if noise is not None:
+        y_delta_train = y_delta_train + np.random.normal(0., noise, (y_delta_train.shape[0], 1))
+        y_omega_train = y_omega_train + np.random.normal(0., noise, (y_delta_train.shape[0], 1))
+        
     # Transform
     if transformation == 'standardize':
         mu_train = X_train.mean(axis=0)[:2]
@@ -201,15 +210,16 @@ def init_dataset(data, data_params, split=0.8, sample=True, transformation='stan
         X_trainc[:,:2] = X_trainc[:,:2] / max_trainc
         X_test = X_test / max_train
         trf_params = (max_train, max_trainc)
+    else:
+        trf_params = None
         
-    # Shuffle
+    # Shuffle again because of the collocation points
     if sample:
         idx_shuffle = np.random.permutation(X_trainc.shape[0])
         X_trainc = X_trainc[idx_shuffle]
         y_delta_trainc = y_delta_trainc[idx_shuffle]
         y_omega_trainc = y_omega_trainc[idx_shuffle]
-    
-
+ 
     return ((X_train, y_delta_train, y_omega_train, trf_params), 
             (X_trainc, y_delta_trainc, y_omega_trainc, trf_params),
             (X_test, y_delta_test, y_omega_test, trf_params))
@@ -221,7 +231,36 @@ if __name__ == '__main__':
     args, general, params, nn_params = cli()
     params['t_span'] = (params['t_min'], params['t_max'])
     params['p_span'] = (params['p_min'], params['p_max'])
+    n_data = params['n_data']
     
     data = create_dataset(params)
     train, trainc, test = init_dataset(data, params)
+    train_idx, trainc_idx, test_idx = init_dataset(data, params, sample=False, transformation=None)
+    X_u, X_f, y_delta, y_omega = data
+    X_trainc, y_delta_trainc, y_omega_trainc, trf_params_trainc = trainc
+    X_test, y_delta_test, y_omega_test, trf_params_test = test
+    X_train_idx, y_delta_train_idx, y_omega_train_idx, trf_params_train_idx = train_idx
+    X_test_idx, y_delta_test_idx, y_omega_test_idx, trf_params_test_idx = test_idx
     
+    idx_data = np.where(X_trainc[:,2] == 1.)[0]
+    mask_data = np.zeros(len(X_trainc), dtype=bool)
+    mask_data[idx_data] = True
+    
+    X_train_data = torch.tensor(X_trainc[mask_data,:2], dtype=torch.float32)
+    X_train_coll = torch.tensor(X_trainc[~mask_data,:2], dtype=torch.float32)
+    y_train_data = torch.tensor(y_delta_trainc[mask_data], dtype=torch.float32)
+    y_train_coll = torch.tensor(y_delta_trainc[~mask_data], dtype=torch.float32)
+    F_data = torch.zeros_like(y_train_data)
+    F_coll = torch.zeros_like(y_train_coll)
+    
+    idx = 0
+    X_selected = torch.tensor(X_train_idx[idx*n_data:idx*n_data+n_data,:2], dtype=torch.float32)
+    y_selected = torch.tensor(y_delta_train_idx[idx*n_data:idx*n_data+n_data,:], dtype=torch.float32)
+    
+    #%% Plotting
+
+    #plt.plot(np.linspace(params['t_min'], params['t_max'], 101), real, alpha=0.5)
+    plt.scatter(np.linspace(params['t_min'], params['t_max'], params['n_data']), y_selected)
+    plt.xlabel('Time [s]')
+    plt.ylabel('Angle [$\delta$]')
+
